@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useThree } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
+import { sceneWithDefaults } from "@/lib/scene-presets";
 import {
   Euler,
   Group,
@@ -58,12 +59,15 @@ async function storedScene(
     db.close();
   }
 }
-export function useSceneWorkspace(scope: string) {
+export function useSceneWorkspace(
+  scope: string,
+  defaults: SceneDocument = EMPTY_SCENE,
+) {
   const [state, setState] = useState<{
     scope: string;
     doc: SceneDocument;
     loaded: boolean;
-  }>({ scope, doc: EMPTY_SCENE, loaded: false });
+  }>({ scope, doc: defaults, loaded: false });
   const [storageError, setStorageError] = useState("");
   useEffect(() => {
     let active = true;
@@ -73,13 +77,13 @@ export function useSceneWorkspace(scope: string) {
         if (active)
           setState({
             scope,
-            doc: saved ? parseScene(saved) : EMPTY_SCENE,
+            doc: sceneWithDefaults(saved, defaults),
             loaded: true,
           });
       })
       .catch(() => {
         if (active) {
-          setState({ scope, doc: EMPTY_SCENE, loaded: true });
+          setState({ scope, doc: defaults, loaded: true });
           setStorageError(
             "Browser storage is unavailable. Export your scene to keep it.",
           );
@@ -88,8 +92,8 @@ export function useSceneWorkspace(scope: string) {
     return () => {
       active = false;
     };
-  }, [scope]);
-  const doc = state.scope === scope ? state.doc : EMPTY_SCENE;
+  }, [scope, defaults]);
+  const doc = state.scope === scope ? state.doc : defaults;
   const loaded = state.scope === scope && state.loaded;
   useEffect(() => {
     if (!loaded) return;
@@ -328,11 +332,13 @@ export function SceneEditor({
   setDoc,
   storageError,
   scope,
+  defaults,
 }: {
   doc: SceneDocument;
   setDoc: (doc: SceneDocument) => void;
   storageError: string;
   scope: string;
+  defaults: SceneDocument;
 }) {
   const [selectedId, setSelectedId] = useState("base_link");
   const [error, setError] = useState("");
@@ -482,6 +488,11 @@ export function SceneEditor({
             setBusy(true);
             setError("");
             try {
+              if (defaults.preset) {
+                setDoc(structuredClone(defaults));
+                setSelectedId("base_link");
+                return;
+              }
               const response = await fetch("/examples/workcell.scene.json");
               if (!response.ok)
                 throw new Error("Could not load example scene.");
@@ -500,7 +511,7 @@ export function SceneEditor({
             }
           }}
         >
-          Load example
+          {defaults.preset ? "Reset demo scene" : "Load example"}
         </button>
         <input
           ref={fileRef}
@@ -527,7 +538,7 @@ export function SceneEditor({
           value={selected ? selectedId : "base_link"}
           onChange={(e) => setSelectedId(e.target.value)}
         >
-          <option value="base_link">Robot base</option>
+          <option value="base_link">Robot root</option>
           {doc.objects.map((o) => (
             <option key={o.id} value={o.id}>
               {o.name}
@@ -613,7 +624,7 @@ export function SceneEditor({
       ) : (
         <>
           <p className="text-xs text-fg-muted">
-            Robot base relative to {base.parent}.
+            Robot root relative to {base.parent}.
           </p>
           <PoseInputs
             value={base}
@@ -635,7 +646,9 @@ export function SceneEditor({
         <div className="mt-2 space-y-2">
           <p>
             World origin is (0, 0, 0). X forward, Y left, Z up. Grid cells are
-            0.1 m. Robot base starts at the world origin.
+            0.1 m.{" "}
+            {doc.originDescription ??
+              "The scene file places the robot root relative to world."}
           </p>
           <p>
             GLB models use meters; their Y-up axis is converted to Z-up.
@@ -648,7 +661,11 @@ export function SceneEditor({
           </p>
           <a
             className="text-accent-fg underline"
-            href="/examples/workcell.scene.json"
+            href={
+              defaults.preset
+                ? "/examples/g1-blockstacking.scene.json"
+                : "/examples/workcell.scene.json"
+            }
             download
           >
             Download example scene

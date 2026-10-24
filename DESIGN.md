@@ -9,3 +9,5 @@ Use Source Sans 3 for controls and IBM Plex Mono for coordinate values. Retain s
 World axes use the conventional red X, green Y, blue Z colors. Grid spacing is 0.1 meter. Keep animations tied to recorded motion only. Scene loading never changes the original dataset.
 
 Default to the G1 humanoid 3D replay. Keep dataset browsing one click away in the 3D toolbar. Use a short accuracy note when parts of a humanoid are shown in an unrecorded reference pose. Preserve existing styling and controls.
+
+For the G1 workcell, put the world marker on the floor between the feet and keep the grid at Z=0. Name the editable URDF placement “Robot root” to distinguish it from world. Show a concise static-reconstruction note for demo props, with the same muted text treatment as the unrecorded-body note. Preserve all scene import/export controls.

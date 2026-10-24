@@ -19,6 +19,9 @@ export type SceneDocument = {
   units: "meters";
   frames: SceneFrame[];
   objects: SceneObject[];
+  preset?: string;
+  originDescription?: string;
+  note?: string;
 };
 export const IDENTITY_POSE: Pose = {
   translation: [0, 0, 0],
@@ -186,6 +189,15 @@ export function parseScene(input: unknown): SceneDocument {
     units: "meters",
     frames,
     objects,
+    ...(root.preset === undefined
+      ? {}
+      : { preset: text(root.preset, "Preset") }),
+    ...(root.originDescription === undefined
+      ? {}
+      : {
+          originDescription: text(root.originDescription, "Origin description"),
+        }),
+    ...(root.note === undefined ? {} : { note: text(root.note, "Scene note") }),
   };
   for (const f of frames) frameMatrix(doc, f.id);
   return doc;

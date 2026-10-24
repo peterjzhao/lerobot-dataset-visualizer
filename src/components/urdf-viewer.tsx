@@ -34,6 +34,7 @@ import { getDatasetVersionAndInfo } from "@/utils/versionUtils";
 import type { DatasetMetadata } from "@/utils/parquetUtils";
 import { useTheme } from "@/utils/theme";
 import { matchG1Joint } from "@/lib/humanoid";
+import { defaultSceneForDataset } from "@/lib/scene-presets";
 import { robotDisplayMatrix, type SceneDocument } from "@/lib/scene";
 import {
   SceneEditor,
@@ -928,7 +929,11 @@ export default function URDFViewer({
   );
   const { urdfUrl, scale } = robotConfig;
   const sceneScope = `${org ?? "local"}/${dataset ?? "dataset"}`;
-  const workspace = useSceneWorkspace(sceneScope);
+  const defaultScene = useMemo(
+    () => defaultSceneForDataset(sceneScope, datasetInfo.robot_type),
+    [sceneScope, datasetInfo.robot_type],
+  );
+  const workspace = useSceneWorkspace(sceneScope, defaultScene);
   const [showScene, setShowScene] = useState(false);
   const [showAxes, setShowAxes] = useState(true);
   const [fitRequest, setFitRequest] = useState(0);
@@ -1228,6 +1233,11 @@ export default function URDFViewer({
             Unrecorded joints use the model reference pose.
           </p>
         )}
+      {workspace.doc.note && (
+        <p className="px-3 pb-2 bg-surface-1 text-xs text-fg-muted">
+          {workspace.doc.note}
+        </p>
+      )}
       <div className="flex-1 flex flex-col xl:flex-row min-h-0 overflow-hidden">
         {/* 3D Viewport */}
         <div className="flex-1 min-h-[200px] xl:min-h-0 bg-[var(--surface-0)] rounded-lg overflow-hidden border border-line relative">
@@ -1345,6 +1355,7 @@ export default function URDFViewer({
               setDoc={workspace.setDoc}
               storageError={workspace.storageError}
               scope={sceneScope}
+              defaults={defaultScene}
             />
           ) : (
             <div

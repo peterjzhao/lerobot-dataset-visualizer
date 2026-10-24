@@ -17,13 +17,13 @@ hf_oauth_expiration_minutes: 480
 
 ## Humanoid default
 
-Opening `/` loads [Unitree's G1 Dex3 block-stacking dataset](https://huggingface.co/datasets/unitreerobotics/G1_Dex3_BlockStacking_Dataset), episode 0, in 3D Replay. It records 14 arm joints and 14 articulated three-finger hand joints at 30 Hz. The other body joints use the URDF reference pose. The **Hands** camera shortcut frames both hands; **Fit view** restores the whole scene. Choose **Datasets** (or open `/?browse=1`) to browse other recordings. Explicit dataset links and legacy URL parameters remain supported.
+Opening `/` loads [Unitree's G1 Dex3 block-stacking dataset](https://huggingface.co/datasets/unitreerobotics/G1_Dex3_BlockStacking_Dataset), episode 0, in 3D Replay. It records 14 arm joints and 14 articulated three-finger hand joints at 30 Hz. The other body joints use the URDF reference pose. The world origin is on the floor between the feet, with the pelvis frame positioned above it. The demo includes reconstructed static GLB models for the white table, red/yellow/blue-green cubes, and tape marker; their positions and sizes are approximate. The **Hands** camera shortcut frames both hands; **Fit view** restores the whole scene. Choose **Datasets** (or open `/?browse=1`) to browse other recordings. Explicit dataset links and legacy URL parameters remain supported.
 
 ## Custom scene objects
 
 This fork adds static scene composition to **3D Replay**. Open **Scene** to import a self-contained GLB, add boxes, edit poses in meters, load an illustrative workcell, and export portable scene JSON. **Axes** shows the world origin; **Fit view** frames all loaded geometry. Changes save in the browser per dataset.
 
-Public coordinates follow ROS REP-103: X forward, Y left, Z up. The robot base starts at the world origin. Scene manifests are a fork-specific format; GLB assets and coordinate conventions use established standards. Added scene objects are user-authored context, not measured object motion or physics.
+Public coordinates follow ROS REP-103: X forward, Y left, Z up. G1 places its pelvis above a floor-based world origin; arm-only scenes retain their root-based default. Scene manifests are a fork-specific format; GLB assets and coordinate conventions use established standards. Added scene objects are user-authored context, not measured object motion or physics.
 
 See [scene format and coordinate conventions](docs/SCENES.md), [example scene](public/examples/workcell.scene.json), and [sample GLB](public/examples/sample-box.glb).
 
