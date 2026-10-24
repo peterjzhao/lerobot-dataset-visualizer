@@ -182,3 +182,7 @@ Contributions, bug reports, and feature requests are welcome! Please open an iss
 ### Acknowledgement
 
 The app was orignally created by [@Mishig25](https://github.com/mishig25) and taken from this PR [#1055](https://github.com/huggingface/lerobot/pull/1055)
+
+## Quest capture format design
+
+The [Quest Capture v1 starter kit](docs/capture-v1/README.md) defines the planned human hand/object recording format, rate defaults, synchronization, static scene context, and LeRobot export semantics. Its [transfer contract](docs/capture-v1/TRANSFER.md) covers a local receiver, USB development tunnel, and paired Wi-Fi uploads. JSON Schema, synthetic sample recordings and a validator are included. Recording, receiving, replaying these packages and exporting them to LeRobot remain planned work.
