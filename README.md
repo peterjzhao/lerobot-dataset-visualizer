@@ -15,6 +15,14 @@ hf_oauth_expiration_minutes: 480
 
 # LeRobot Dataset Visualizer
 
+## Custom scene objects
+
+This fork adds static scene composition to **3D Replay**. Open **Scene** to import a self-contained GLB, add boxes, edit poses in meters, load an illustrative workcell, and export portable scene JSON. **Axes** shows the world origin; **Fit view** frames all loaded geometry. Changes save in the browser per dataset.
+
+Public coordinates follow ROS REP-103: X forward, Y left, Z up. The robot base starts at the world origin. Scene manifests are a fork-specific format; GLB assets and coordinate conventions use established standards. Added scene objects are user-authored context, not measured object motion or physics.
+
+See [scene format and coordinate conventions](docs/SCENES.md), [example scene](public/examples/workcell.scene.json), and [sample GLB](public/examples/sample-box.glb).
+
 LeRobot Dataset Tool and Visualizer is a web application for interactive exploration and visualization of robotics datasets, particularly those in the LeRobot format. It enables users to browse, view, and analyze episodes from large-scale robotics datasets, combining synchronized video playback with rich, interactive data graphs.
 
 ## Project Overview

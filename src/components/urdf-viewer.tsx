@@ -32,6 +32,12 @@ import { CHART_CONFIG } from "@/utils/constants";
 import { getDatasetVersionAndInfo } from "@/utils/versionUtils";
 import type { DatasetMetadata } from "@/utils/parquetUtils";
 import { useTheme } from "@/utils/theme";
+import { robotDisplayMatrix, type SceneDocument } from "@/lib/scene";
+import {
+  SceneEditor,
+  SceneObjects,
+  useSceneWorkspace,
+} from "@/components/scene-workspace";
 
 const SERIES_DELIM = CHART_CONFIG.SERIES_NAME_DELIMITER;
 const DEG2RAD = Math.PI / 180;
@@ -405,8 +411,10 @@ function fitCameraToRobot(
   robot: THREE.Object3D,
   camera: THREE.Camera,
   controls: unknown,
+  extra?: THREE.Object3D,
 ) {
   const bbox = new THREE.Box3().setFromObject(robot);
+  if (extra) bbox.union(new THREE.Box3().setFromObject(extra));
   if (bbox.isEmpty()) return;
   const center = bbox.getCenter(new THREE.Vector3());
   const sizeVec = bbox.getSize(new THREE.Vector3());
@@ -435,6 +443,8 @@ function RobotScene({
   trailEnabled,
   trailResetKey,
   scale,
+  sceneDocument,
+  fitRequest,
 }: {
   urdfUrl: string;
   jointValues: Record<string, number>;
@@ -442,6 +452,8 @@ function RobotScene({
   trailEnabled: boolean;
   trailResetKey: number;
   scale: number;
+  sceneDocument: SceneDocument;
+  fitRequest: number;
 }) {
   const { scene, controls, size, invalidate } = useThree();
   const robotRef = useRef<URDFRobot | null>(null);
@@ -464,6 +476,15 @@ function RobotScene({
   const pendingFitRef = useRef(false);
   const pendingFitFramesRef = useRef(0);
   const framesSinceInputRef = useRef(0);
+  const placement = useMemo(
+    () => robotDisplayMatrix(sceneDocument, scale),
+    [sceneDocument, scale],
+  );
+  useEffect(() => {
+    pendingFitRef.current = true;
+    pendingFitFramesRef.current = 0;
+    invalidate();
+  }, [placement, fitRequest, invalidate]);
 
   // Reset trails when episode changes
   useEffect(() => {
@@ -660,7 +681,7 @@ function RobotScene({
         if (cancelled) return;
         const robot = loader.parse(text);
         robotRef.current = robot;
-        robot.rotateOnAxis(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+        // Placement is applied by the frame loop from the explicit world/base transform.
         robot.scale.set(scale, scale, scale);
         scene.add(robot);
 
@@ -726,6 +747,7 @@ function RobotScene({
     const robot = robotRef.current;
     if (!robot) return;
 
+    placement.decompose(robot.position, robot.quaternion, robot.scale);
     for (const [name, value] of Object.entries(jointValues)) {
       robot.setJointValue(name, value);
     }
@@ -738,7 +760,12 @@ function RobotScene({
         pendingFitFramesRef.current > MAX_FIT_WAIT_FRAMES
       ) {
         pendingFitRef.current = false;
-        fitCameraToRobot(robot, state.camera, state.controls);
+        fitCameraToRobot(
+          robot,
+          state.camera,
+          state.controls,
+          state.scene.getObjectByName("scene-objects"),
+        );
       }
     }
 
@@ -922,6 +949,11 @@ export default function URDFViewer({
     [datasetInfo.robot_type],
   );
   const { urdfUrl, scale } = robotConfig;
+  const sceneScope = `${org ?? "local"}/${dataset ?? "dataset"}`;
+  const workspace = useSceneWorkspace(sceneScope);
+  const [showScene, setShowScene] = useState(false);
+  const [showAxes, setShowAxes] = useState(true);
+  const [fitRequest, setFitRequest] = useState(0);
   const isG1 = urdfUrl.includes("g1");
   const isOpenArm = urdfUrl.includes("openarm");
   const repoId = org && dataset ? `${org}/${dataset}` : null;
@@ -1153,106 +1185,158 @@ export default function URDFViewer({
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* 3D Viewport */}
-      <div className="flex-1 min-h-0 bg-[var(--surface-0)] rounded-lg overflow-hidden border border-line relative">
-        {(episodeLoading || urdfLoading) && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--bg)]/80">
-            <span className="text-fg text-lg animate-pulse">
-              {urdfLoading
-                ? "Loading 3D model…"
-                : `Loading episode ${selectedEpisode}…`}
-            </span>
-          </div>
-        )}
-        <Canvas
-          shadows
-          frameloop="demand"
-          camera={{
-            position: isG1
-              ? [1.5, 1.0, 1.5]
-              : isOpenArm
-                ? [0.95 * scale, 0.8 * scale, 0.95 * scale]
-                : [0.3 * scale, 0.25 * scale, 0.3 * scale],
-            fov: 45,
-            near: 0.01,
-            far: 100,
-          }}
-          gl={{
-            toneMapping: THREE.ACESFilmicToneMapping,
-            toneMappingExposure: 0.9,
-          }}
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-surface-1 text-xs">
+        <button
+          type="button"
+          aria-expanded={showScene}
+          onClick={() => setShowScene((v) => !v)}
+          className="rounded-md bg-surface-2 text-fg px-3 py-2 hover:bg-line-strong focus-visible:outline-2 focus-visible:outline-accent"
         >
-          <color attach="background" args={[dark ? "#141c2e" : "#f3f4f6"]} />
-          {STUDIO_ENVIRONMENT}
-          {/* 3-point studio rig — key is the only shadow caster */}
-          <ambientLight intensity={0.12} />
-          <directionalLight
-            color="#fff2e3"
-            position={[3, 5, 3]}
-            intensity={1.0}
-            castShadow
-            shadow-mapSize-width={2048}
-            shadow-mapSize-height={2048}
-            shadow-camera-near={0.1}
-            shadow-camera-far={15}
-            shadow-camera-left={-3}
-            shadow-camera-right={3}
-            shadow-camera-top={3}
-            shadow-camera-bottom={-3}
-            shadow-bias={-0.0005}
-          />
-          <directionalLight
-            color="#bfd9ff"
-            position={[-4, 2, -2]}
-            intensity={0.25}
-          />
-          <directionalLight
-            color="#ffffff"
-            position={[0, 3, -4]}
-            intensity={0.4}
-          />
-          {/* Ground-shadow catcher — invisible plane receives key-light shadow */}
-          <mesh
-            rotation={[-Math.PI / 2, 0, 0]}
-            position={[0, 0.001, 0]}
-            receiveShadow
-          >
-            <planeGeometry args={[10, 10]} />
-            <shadowMaterial opacity={0.35} />
-          </mesh>
-          <RobotScene
-            urdfUrl={urdfUrl}
-            jointValues={jointValues}
-            onJointsLoaded={onJointsLoaded}
-            trailEnabled={trailEnabled}
-            trailResetKey={selectedEpisode}
-            scale={scale}
-          />
-          <Grid
-            args={[10, 10]}
-            cellSize={isG1 ? 0.5 : 0.2}
-            cellThickness={0.5}
-            cellColor={dark ? "#334155" : "#d1d5db"}
-            sectionSize={isG1 ? 2 : 1}
-            sectionThickness={1}
-            sectionColor={dark ? "#475569" : "#9ca3af"}
-            fadeDistance={isG1 ? 20 : 10}
-            position={[0, 0, 0]}
-          />
-          <OrbitControls
-            makeDefault
-            target={isG1 ? [0, 0.5, 0] : [0, 0.8, 0]}
-          />
-          <PlaybackDriver
-            playing={playing}
-            fps={fps}
-            totalFrames={totalFrames}
-            frameRef={frameRef}
-            setFrame={setFrame}
-          />
-        </Canvas>
+          Scene
+        </button>
+        <button
+          type="button"
+          aria-pressed={showAxes}
+          onClick={() => setShowAxes((v) => !v)}
+          className="rounded-md bg-surface-2 text-fg px-3 py-2 hover:bg-line-strong focus-visible:outline-2 focus-visible:outline-accent"
+        >
+          Axes {showAxes ? "on" : "off"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setFitRequest((v) => v + 1)}
+          className="rounded-md bg-surface-2 text-fg px-3 py-2 hover:bg-line-strong focus-visible:outline-2 focus-visible:outline-accent"
+        >
+          Fit view
+        </button>
+        <span className="ml-auto text-fg-muted">World frame in meters</span>
       </div>
+      <div className="flex-1 flex flex-col xl:flex-row min-h-0 overflow-hidden">
+        {/* 3D Viewport */}
+        <div className="flex-1 min-h-[200px] xl:min-h-0 bg-[var(--surface-0)] rounded-lg overflow-hidden border border-line relative">
+          {(episodeLoading || urdfLoading) && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--bg)]/80">
+              <span className="text-fg text-lg animate-pulse">
+                {urdfLoading
+                  ? "Loading 3D model…"
+                  : `Loading episode ${selectedEpisode}…`}
+              </span>
+            </div>
+          )}
+          <Canvas
+            shadows
+            frameloop="demand"
+            camera={{
+              position: isG1
+                ? [1.5, 1.0, 1.5]
+                : isOpenArm
+                  ? [0.95 * scale, 0.8 * scale, 0.95 * scale]
+                  : [0.3 * scale, 0.25 * scale, 0.3 * scale],
+              fov: 45,
+              near: 0.01,
+              far: 100,
+            }}
+            gl={{
+              toneMapping: THREE.ACESFilmicToneMapping,
+              toneMappingExposure: 0.9,
+            }}
+          >
+            <color attach="background" args={[dark ? "#141c2e" : "#f3f4f6"]} />
+            {STUDIO_ENVIRONMENT}
+            {/* 3-point studio rig — key is the only shadow caster */}
+            <ambientLight intensity={0.12} />
+            <directionalLight
+              color="#fff2e3"
+              position={[3, 5, 3]}
+              intensity={1.0}
+              castShadow
+              shadow-mapSize-width={2048}
+              shadow-mapSize-height={2048}
+              shadow-camera-near={0.1}
+              shadow-camera-far={15}
+              shadow-camera-left={-3}
+              shadow-camera-right={3}
+              shadow-camera-top={3}
+              shadow-camera-bottom={-3}
+              shadow-bias={-0.0005}
+            />
+            <directionalLight
+              color="#bfd9ff"
+              position={[-4, 2, -2]}
+              intensity={0.25}
+            />
+            <directionalLight
+              color="#ffffff"
+              position={[0, 3, -4]}
+              intensity={0.4}
+            />
+            {/* Ground-shadow catcher — invisible plane receives key-light shadow */}
+            <mesh
+              rotation={[-Math.PI / 2, 0, 0]}
+              position={[0, 0.001, 0]}
+              receiveShadow
+            >
+              <planeGeometry args={[10, 10]} />
+              <shadowMaterial opacity={0.35} />
+            </mesh>
+            <RobotScene
+              urdfUrl={urdfUrl}
+              jointValues={jointValues}
+              onJointsLoaded={onJointsLoaded}
+              trailEnabled={trailEnabled}
+              trailResetKey={selectedEpisode}
+              scale={scale}
+              sceneDocument={workspace.doc}
+              fitRequest={fitRequest}
+            />
+            <SceneObjects
+              doc={workspace.doc}
+              displayScale={scale}
+              axes={showAxes}
+            />
+            <Grid
+              args={[10 * scale, 10 * scale]}
+              cellSize={0.1 * scale}
+              cellThickness={0.5}
+              cellColor={dark ? "#334155" : "#d1d5db"}
+              sectionSize={scale}
+              sectionThickness={1}
+              sectionColor={dark ? "#475569" : "#9ca3af"}
+              fadeDistance={10 * scale}
+              position={[0, 0, 0]}
+            />
+            <OrbitControls
+              makeDefault
+              target={isG1 ? [0, 0.5, 0] : [0, 0.8, 0]}
+            />
+            <PlaybackDriver
+              playing={playing}
+              fps={fps}
+              totalFrames={totalFrames}
+              frameRef={frameRef}
+              setFrame={setFrame}
+            />
+          </Canvas>
+        </div>
 
+        {showScene &&
+          (workspace.loaded ? (
+            <SceneEditor
+              key={sceneScope}
+              doc={workspace.doc}
+              setDoc={workspace.setDoc}
+              storageError={workspace.storageError}
+              scope={sceneScope}
+            />
+          ) : (
+            <div
+              role="status"
+              className="p-4 bg-surface-1 text-fg-muted text-xs"
+            >
+              Loading scene…
+            </div>
+          ))}
+      </div>
       {/* Controls */}
       <div className="bg-[var(--surface-1)]/90 border-t border-line p-3 space-y-3 shrink-0">
         <UrdfPlaybackBar
