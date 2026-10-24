@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { postParentMessageWithParams } from "@/utils/postParentMessage";
 import { SimpleVideosPlayer } from "@/components/simple-videos-player";
 import PlaybackBar from "@/components/playback-bar";
@@ -20,7 +20,7 @@ import Loading from "@/components/loading-component";
 import HfAuthButton from "@/components/hf-auth-button";
 import { EpisodeHeader, ThemeToggle } from "@/components/ui";
 import { useTheme } from "@/utils/theme";
-import { hasURDFSupport } from "@/lib/so101-robot";
+import { hasURDFSupport, isG1Robot } from "@/lib/so101-robot";
 import {
   computeColumnMinMax,
   getEpisodeDataSafe,
@@ -270,12 +270,13 @@ export default function EpisodeViewer({
   // alongside the episode data, rather than once it has loaded and the viewer
   // mounts. info.json is all it needs, and the episode load fetches it anyway.
   useEffect(() => {
-    if (sessionStorage.getItem("activeTab") !== "urdf") return;
     getDatasetVersionAndInfo(`${org}/${dataset}`)
       .then(({ info }) => {
         if (
           hasURDFSupport(info.robot_type ?? null) &&
-          info.codebase_version >= "v3.0"
+          info.codebase_version >= "v3.0" &&
+          (sessionStorage.getItem("activeTab") === "urdf" ||
+            isG1Robot(info.robot_type ?? null))
         ) {
           return import("@/components/urdf-viewer").then((m) =>
             m.prefetchRobotModel(info.robot_type ?? null),
@@ -424,7 +425,14 @@ function EpisodeViewerInner({
   // Tab state & lazy stats — read sessionStorage in the initializer so the
   // correct tab renders on the very first frame (no post-mount flash).
   // Safe because EpisodeViewerInner only mounts client-side (behind a loading gate).
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+    const requested = searchParams.get("view");
+    if (
+      TABS.includes(requested as ActiveTab) &&
+      (requested !== "urdf" || urdfSupported)
+    )
+      return requested as ActiveTab;
     if (typeof window !== "undefined") {
       const stored = sessionStorage.getItem("activeTab");
       /// A tab saved on another dataset may not exist here (3D Replay needs a supported robot).
@@ -435,7 +443,9 @@ function EpisodeViewerInner({
         return stored as ActiveTab;
       }
     }
-    return "episodes";
+    return urdfSupported && isG1Robot(datasetInfo.robot_type)
+      ? "urdf"
+      : "episodes";
   });
   const isLoading = activeTab === "episodes" && (!videosReady || !chartsReady);
 

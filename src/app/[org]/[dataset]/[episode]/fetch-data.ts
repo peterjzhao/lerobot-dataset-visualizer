@@ -5,6 +5,7 @@ import {
   readParquetAsObjects,
 } from "@/utils/parquetUtils";
 import { pick } from "@/utils/pick";
+import { featureComponentNames } from "@/lib/humanoid";
 import {
   getDatasetVersionAndInfo,
   buildVersionedUrl,
@@ -1193,9 +1194,8 @@ function chartDataFromFrames(
   for (const [key, components] of Object.entries(frames.series)) {
     if (!info.features[key] || excludedColumns.includes(key)) continue;
     const names =
-      frames.names[key]?.length === components.length
-        ? frames.names[key]
-        : undefined;
+      featureComponentNames(frames.names[key], components.length) ??
+      featureComponentNames(info.features[key]?.names, components.length);
     components.forEach((values, i) => {
       const suffix = names?.[i] ?? (components.length > 1 ? i : undefined);
       series.push([

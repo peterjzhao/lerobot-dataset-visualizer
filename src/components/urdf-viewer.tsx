@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import React, {
   useState,
   useEffect,
@@ -32,6 +33,7 @@ import { CHART_CONFIG } from "@/utils/constants";
 import { getDatasetVersionAndInfo } from "@/utils/versionUtils";
 import type { DatasetMetadata } from "@/utils/parquetUtils";
 import { useTheme } from "@/utils/theme";
+import { matchG1Joint } from "@/lib/humanoid";
 import { robotDisplayMatrix, type SceneDocument } from "@/lib/scene";
 import {
   SceneEditor,
@@ -293,39 +295,6 @@ function groupColumnsByPrefix(keys: string[]): Record<string, string[]> {
   return groups;
 }
 
-// Unitree G1 SDK column suffix → URDF joint name
-const G1_SDK_TO_URDF: Record<string, string> = {
-  "klefthippitch.q": "left_hip_pitch_joint",
-  "klefthiproll.q": "left_hip_roll_joint",
-  "klefthipyaw.q": "left_hip_yaw_joint",
-  "kleftknee.q": "left_knee_joint",
-  "kleftanklepitch.q": "left_ankle_pitch_joint",
-  "kleftankleroll.q": "left_ankle_roll_joint",
-  "krighthippitch.q": "right_hip_pitch_joint",
-  "krighthiproll.q": "right_hip_roll_joint",
-  "krighthipyaw.q": "right_hip_yaw_joint",
-  "krightknee.q": "right_knee_joint",
-  "krightanklepitch.q": "right_ankle_pitch_joint",
-  "krightankleroll.q": "right_ankle_roll_joint",
-  "kwaistyaw.q": "waist_yaw_joint",
-  "kwaistroll.q": "waist_roll_joint",
-  "kwaistpitch.q": "waist_pitch_joint",
-  "kleftshoulderpitch.q": "left_shoulder_pitch_joint",
-  "kleftshoulderroll.q": "left_shoulder_roll_joint",
-  "kleftshoulderyaw.q": "left_shoulder_yaw_joint",
-  "kleftelbow.q": "left_elbow_joint",
-  "kleftwristroll.q": "left_wrist_roll_joint",
-  "kleftwristpitch.q": "left_wrist_pitch_joint",
-  "kleftwristyaw.q": "left_wrist_yaw_joint",
-  "krightshoulderpitch.q": "right_shoulder_pitch_joint",
-  "krightshoulderroll.q": "right_shoulder_roll_joint",
-  "krightshoulderyaw.q": "right_shoulder_yaw_joint",
-  "krightelbow.q": "right_elbow_joint",
-  "krightwristroll.q": "right_wrist_roll_joint",
-  "krightwristpitch.q": "right_wrist_pitch_joint",
-  "krightwristyaw.q": "right_wrist_yaw_joint",
-};
-
 function autoMatchJoints(
   urdfJointNames: string[],
   columnKeys: string[],
@@ -334,13 +303,6 @@ function autoMatchJoints(
   const suffixes = columnKeys.map((k) =>
     (k.split(SERIES_DELIM).pop()?.trim() ?? k).toLowerCase(),
   );
-
-  // Build reverse lookup: URDF joint name → column key (for G1 SDK-style columns)
-  const g1Reverse = new Map<string, string>();
-  for (let i = 0; i < suffixes.length; i++) {
-    const urdfName = G1_SDK_TO_URDF[suffixes[i]];
-    if (urdfName) g1Reverse.set(urdfName, columnKeys[i]);
-  }
 
   for (const jointName of urdfJointNames) {
     const lower = jointName.toLowerCase();
@@ -353,9 +315,9 @@ function autoMatchJoints(
     }
 
     // G1 / Unitree SDK name match
-    const g1Col = g1Reverse.get(lower);
-    if (g1Col) {
-      mapping[jointName] = g1Col;
+    const g1Index = matchG1Joint(jointName, suffixes);
+    if (g1Index >= 0) {
+      mapping[jointName] = columnKeys[g1Index];
       continue;
     }
 
@@ -412,9 +374,10 @@ function fitCameraToRobot(
   camera: THREE.Camera,
   controls: unknown,
   extra?: THREE.Object3D,
+  focusBounds?: THREE.Box3,
 ) {
-  const bbox = new THREE.Box3().setFromObject(robot);
-  if (extra) bbox.union(new THREE.Box3().setFromObject(extra));
+  const bbox = focusBounds ?? new THREE.Box3().setFromObject(robot);
+  if (extra && !focusBounds) bbox.union(new THREE.Box3().setFromObject(extra));
   if (bbox.isEmpty()) return;
   const center = bbox.getCenter(new THREE.Vector3());
   const sizeVec = bbox.getSize(new THREE.Vector3());
@@ -445,6 +408,7 @@ function RobotScene({
   scale,
   sceneDocument,
   fitRequest,
+  fitTarget,
 }: {
   urdfUrl: string;
   jointValues: Record<string, number>;
@@ -454,6 +418,7 @@ function RobotScene({
   scale: number;
   sceneDocument: SceneDocument;
   fitRequest: number;
+  fitTarget: "scene" | "hands";
 }) {
   const { scene, controls, size, invalidate } = useThree();
   const robotRef = useRef<URDFRobot | null>(null);
@@ -484,7 +449,7 @@ function RobotScene({
     pendingFitRef.current = true;
     pendingFitFramesRef.current = 0;
     invalidate();
-  }, [placement, fitRequest, invalidate]);
+  }, [placement, fitRequest, fitTarget, invalidate]);
 
   // Reset trails when episode changes
   useEffect(() => {
@@ -760,11 +725,24 @@ function RobotScene({
         pendingFitFramesRef.current > MAX_FIT_WAIT_FRAMES
       ) {
         pendingFitRef.current = false;
+        let focusBounds: THREE.Box3 | undefined;
+        if (fitTarget === "hands") {
+          const hands = G1_TIP_NAMES.map((name) => robot.frames[name]).filter(
+            Boolean,
+          );
+          if (hands.length) {
+            focusBounds = new THREE.Box3();
+            for (const hand of hands)
+              focusBounds.union(new THREE.Box3().setFromObject(hand));
+            if (focusBounds.isEmpty()) focusBounds = undefined;
+          }
+        }
         fitCameraToRobot(
           robot,
           state.camera,
           state.controls,
           state.scene.getObjectByName("scene-objects"),
+          focusBounds,
         );
       }
     }
@@ -954,6 +932,7 @@ export default function URDFViewer({
   const [showScene, setShowScene] = useState(false);
   const [showAxes, setShowAxes] = useState(true);
   const [fitRequest, setFitRequest] = useState(0);
+  const [fitTarget, setFitTarget] = useState<"scene" | "hands">("scene");
   const isG1 = urdfUrl.includes("g1");
   const isOpenArm = urdfUrl.includes("openarm");
   const repoId = org && dataset ? `${org}/${dataset}` : null;
@@ -1160,7 +1139,7 @@ export default function URDFViewer({
       }
     }
 
-    const converted = detectAndConvert(revoluteValues);
+    const converted = isG1 ? revoluteValues : detectAndConvert(revoluteValues);
     revoluteNames.forEach((n, i) => {
       values[n] = converted[i];
     });
@@ -1173,7 +1152,15 @@ export default function URDFViewer({
       }
     }
     return values;
-  }, [chartData, frame, gripperRanges, mapping, totalFrames, urdfJointNames]);
+  }, [
+    chartData,
+    frame,
+    gripperRanges,
+    mapping,
+    totalFrames,
+    urdfJointNames,
+    isG1,
+  ]);
 
   if (data.flatChartData.length === 0) {
     return (
@@ -1186,6 +1173,12 @@ export default function URDFViewer({
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-surface-1 text-xs">
+        <Link
+          href="/?browse=1"
+          className="rounded-md bg-surface-2 text-fg px-3 py-2 hover:bg-line-strong focus-visible:outline-2 focus-visible:outline-accent"
+        >
+          Datasets
+        </Link>
         <button
           type="button"
           aria-expanded={showScene}
@@ -1204,13 +1197,37 @@ export default function URDFViewer({
         </button>
         <button
           type="button"
-          onClick={() => setFitRequest((v) => v + 1)}
+          onClick={() => {
+            setFitTarget("scene");
+            setFitRequest((v) => v + 1);
+          }}
           className="rounded-md bg-surface-2 text-fg px-3 py-2 hover:bg-line-strong focus-visible:outline-2 focus-visible:outline-accent"
         >
           Fit view
         </button>
+        {isG1 && (
+          <button
+            type="button"
+            title="Focus camera on both hands"
+            aria-pressed={fitTarget === "hands"}
+            onClick={() => {
+              setFitTarget("hands");
+              setFitRequest((v) => v + 1);
+            }}
+            className="rounded-md bg-surface-2 text-fg px-3 py-2 hover:bg-line-strong focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            Hands
+          </button>
+        )}
         <span className="ml-auto text-fg-muted">World frame in meters</span>
       </div>
+      {isG1 &&
+        urdfJointNames.length > 0 &&
+        displayJointNames.some((name) => !mapping[name]) && (
+          <p className="px-3 pb-2 bg-surface-1 text-xs text-fg-muted">
+            Unrecorded joints use the model reference pose.
+          </p>
+        )}
       <div className="flex-1 flex flex-col xl:flex-row min-h-0 overflow-hidden">
         {/* 3D Viewport */}
         <div className="flex-1 min-h-[200px] xl:min-h-0 bg-[var(--surface-0)] rounded-lg overflow-hidden border border-line relative">
@@ -1288,6 +1305,7 @@ export default function URDFViewer({
               scale={scale}
               sceneDocument={workspace.doc}
               fitRequest={fitRequest}
+              fitTarget={fitTarget}
             />
             <SceneObjects
               doc={workspace.doc}

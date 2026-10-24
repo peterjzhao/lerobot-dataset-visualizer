@@ -7,3 +7,5 @@ Use Source Sans 3 for controls and IBM Plex Mono for coordinate values. Retain s
 3D Replay remains the primary surface. Place Scene and Axes controls above the viewport. Open the scene editor alongside the viewport on wide displays and below it with a bounded scroll area on narrow displays. Use labeled native inputs, visible focus rings, keyboard-operable controls, inline import errors, and loading states. Hide complexity behind selection and native disclosure controls. Coordinate labels must name units; identify manually added context as user-authored.
 
 World axes use the conventional red X, green Y, blue Z colors. Grid spacing is 0.1 meter. Keep animations tied to recorded motion only. Scene loading never changes the original dataset.
+
+Default to the G1 humanoid 3D replay. Keep dataset browsing one click away in the 3D toolbar. Use a short accuracy note when parts of a humanoid are shown in an unrecorded reference pose. Preserve existing styling and controls.

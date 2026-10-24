@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useCallback, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { useSearchParams } from "next/navigation";
 import { authHeaders } from "@/utils/auth";
+import { DEFAULT_HUMANOID_PATH, HUMANOID_EXAMPLES } from "@/lib/humanoid";
 import HfAuthButton from "@/components/hf-auth-button";
 import { Spinner, ThemeToggle } from "@/components/ui";
 
@@ -32,7 +33,7 @@ const FEATURES = [
   {
     icon: "🦾",
     title: "3D Replay",
-    body: "Watch the robot move from its recorded joint positions: SO-100/SO-101, OpenArm and Unitree G1.",
+    body: "Replay humanoid arms and articulated hands on Unitree G1. SO-100/SO-101 and OpenArm datasets are also supported.",
   },
   {
     icon: "🔍",
@@ -41,12 +42,7 @@ const FEATURES = [
   },
 ];
 
-const EXAMPLE_DATASETS = [
-  "lerobot/svla_so101_pickplace",
-  "lerobot/high_quality_folding",
-  "lerobot/aloha_static_cups_open",
-  "imstevenpmwork/thanos_picking_power_gem",
-];
+const EXAMPLE_DATASETS = [...HUMANOID_EXAMPLES, "lerobot/svla_so101_pickplace"];
 
 function HomeInner() {
   const searchParams = useSearchParams();
@@ -87,6 +83,8 @@ function HomeInner() {
       router.push(redirectUrl);
       return;
     }
+    if (searchParams.get("browse") !== "1")
+      router.replace(DEFAULT_HUMANOID_PATH);
   }, [searchParams, router]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -179,6 +177,13 @@ function HomeInner() {
     }
   };
 
+  if (searchParams.get("browse") !== "1")
+    return (
+      <main className="min-h-screen bg-bg text-fg flex items-center justify-center">
+        <p role="status">Opening humanoid demo…</p>
+      </main>
+    );
+
   return (
     <div className="min-h-screen bg-[var(--bg)] text-fg">
       {/* Top bar */}
@@ -242,7 +247,7 @@ function HomeInner() {
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
                 onFocus={() => query.trim() && setShowSuggestions(true)}
-                placeholder="Enter a dataset id, e.g. lerobot/pusht"
+                placeholder="Enter a LeRobot dataset id"
                 aria-label="Dataset id"
                 className="w-full rounded-lg border border-line bg-[var(--surface-1)] py-3 pl-10 pr-4 text-base text-fg shadow-sm transition-colors placeholder:text-fg-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-[var(--accent-ring)]"
                 autoComplete="off"
@@ -309,7 +314,7 @@ function HomeInner() {
                 <button
                   key={ds}
                   type="button"
-                  className="rounded-full border border-line bg-[var(--surface-1)] px-3 py-1.5 text-sm text-fg-soft transition-all hover:border-accent hover:bg-accent/10 hover:text-accent-fg active:scale-95"
+                  className="rounded-full bg-surface-2 px-3 py-1.5 text-sm text-fg-soft transition-colors hover:bg-line-strong hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
                   onClick={() => navigate(ds)}
                 >
                   {ds}
